@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "АСУ Мои Дома",
+    "slug": "asu-light",
+    "version": "1.0.3",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "asulight",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "bundleIdentifier": "kz.synapse.asulight",
+      "buildNumber": "1",
+      "supportsTablet": false,
+      "associatedDomains": [
+        "webcredentials:asu-md-light.duckdns.org"
+      ],
+      "infoPlist": {
+        "CFBundleDisplayName": "АСУ Мои Дома",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "kz.synapse.asulight",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#3863D2"
+      }
+    },
+    "extra": {
+      "apiBaseUrl": "https://asu-md-light.duckdns.org",
+      "eas": {
+        "projectId": "de4c434e-1b35-47db-8624-595ce3c829dd"
+      }
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
+  }
+}
