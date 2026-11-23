@@ -19,6 +19,7 @@ export const Icon = {
   home: (c) => <S color={c}><Path d="M3 11 12 4l9 7" /><Path d="M5 10v10h14V10" /><Path d="M10 20v-6h4v6" /></S>,
   users: (c) => <S color={c}><Circle cx="9" cy="8" r="3.5" /><Path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6" /><Circle cx="17" cy="9" r="2.5" /><Path d="M16 14.5c3 0 5.5 2 5.5 5" /></S>,
   person: (c) => <S color={c}><Circle cx="12" cy="8" r="4" /><Path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7" /></S>,
+  chart: (c) => <S color={c}><Path d="M4 20V10" /><Path d="M10 20V4" /><Path d="M16 20v-7" /><Path d="M21 20H3" /></S>,
   logout: (c) => <S color={c} size={22}><Path d="M10 4H5v16h5" /><Path d="M14 8l4 4-4 4" /><Path d="M18 12H9" /></S>,
   alert: (c) => <S color={c}><Circle cx="12" cy="12" r="9" /><Path d="M12 8v5" /><Path d="M12 16h.01" /></S>,
   empty: (c) => <S color={c} size={48} sw={1.5}><Circle cx="11" cy="11" r="7" /><Path d="M20 20l-3.5-3.5" /><Path d="M8 11h6" /></S>,
@@ -233,6 +234,30 @@ export function SheetOption({ label, count, selected, onPress }) {
       <Text style={{ fontSize: fs(t.size.body), fontWeight: selected ? t.font.weightMedium : '400', color: selected && t.key === 'md24' ? t.colors.accent : t.colors.text }}>{label}{count != null ? <Text style={{ color: t.colors.textMuted }}> · {count}</Text> : null}</Text>
       {selected ? Icon.check(t.colors.accent) : null}
     </Pressable>
+  );
+}
+
+/**
+ * Защита экрана: ошибка внутри не роняет приложение, а показывает текст ошибки.
+ * В production-сборке любое необработанное исключение в React закрывает приложение,
+ * поэтому экраны со сложной отрисовкой (графики) оборачиваются в этот компонент.
+ */
+export class ScreenBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error) { return { error }; }
+  componentDidCatch(error, info) { console.warn('Ошибка экрана:', error?.message, info?.componentStack); }
+  render() {
+    if (this.state.error) {
+      return <BoundaryFallback error={this.state.error} onRetry={() => this.setState({ error: null })} />;
+    }
+    return this.props.children;
+  }
+}
+function BoundaryFallback({ error, onRetry }) {
+  return (
+    <ScrollView contentContainerStyle={{ padding: 16 }}>
+      <ErrorCard message={`Не удалось показать экран: ${error?.message || 'неизвестная ошибка'}`} onRetry={onRetry} />
+    </ScrollView>
   );
 }
 

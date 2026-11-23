@@ -47,12 +47,21 @@ async function request(method, path, body) {
   return data;
 }
 
+/** Строка запроса: URLSearchParams в React Native не умеет toString(). */
+function qs(params) {
+  return Object.entries(params || {})
+    .filter(([, v]) => v !== undefined && v !== null && v !== '')
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+    .join('&');
+}
+
 export const api = {
   login: (login, password) => request('POST', '/api/auth/login', { login, password }),
   logout: () => request('POST', '/api/auth/logout'),
   me: () => request('GET', '/api/auth/me'),
   houses: (mark) => request('GET', `/api/houses?mark=${encodeURIComponent(mark || '')}`),
   houseCard: (buildId, mark) => request('GET', `/api/houses/card?build_id=${encodeURIComponent(buildId)}&mark=${encodeURIComponent(mark || '')}`),
+  analytics: (params) => request('GET', `/api/analytics/housing-movement?${qs(params)}`),
   users: () => request('GET', '/api/users'),
   createUser: (p) => request('POST', '/api/users', p),
   updateUser: (id, p) => request('PUT', `/api/users/${id}`, p),

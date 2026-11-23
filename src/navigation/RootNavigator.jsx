@@ -3,7 +3,8 @@ import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { Icon } from '../components/ui';
+import { Icon, ScreenBoundary } from '../components/ui';
+import AnalyticsScreen from '../screens/AnalyticsScreen';
 import { useAuth } from '../lib/auth';
 import HouseCardScreen from '../screens/HouseCardScreen';
 import HousesScreen from '../screens/HousesScreen';
@@ -36,6 +37,11 @@ function UsersNav() {
   );
 }
 
+/* Экран аналитики под защитой: ошибка отрисовки покажется карточкой, а не закроет приложение. */
+function AnalyticsNav() {
+  return <ScreenBoundary><AnalyticsScreen /></ScreenBoundary>;
+}
+
 function Tabs() {
   const { isSuperadmin } = useAuth();
   const { theme: t } = useTheme();
@@ -46,9 +52,10 @@ function Tabs() {
       tabBarInactiveTintColor: t.colors.textMuted,
       tabBarStyle: { backgroundColor: t.colors.surface, borderTopColor: t.colors.line },
       tabBarLabelStyle: { fontSize: fs(t.size.tab), fontWeight: '500' },
-      tabBarIcon: ({ color }) => ({ HousesTab: Icon.home, UsersTab: Icon.users, ProfileTab: Icon.person }[route.name](color)),
+      tabBarIcon: ({ color }) => ({ HousesTab: Icon.home, AnalyticsTab: Icon.chart, UsersTab: Icon.users, ProfileTab: Icon.person }[route.name](color)),
     })}>
       <Tab.Screen name="HousesTab" component={HousesNav} options={{ title: 'Дома' }} />
+      <Tab.Screen name="AnalyticsTab" component={AnalyticsNav} options={{ title: 'Аналитика' }} />
       {isSuperadmin ? <Tab.Screen name="UsersTab" component={UsersNav} options={{ title: 'Пользователи' }} /> : null}
       <Tab.Screen name="ProfileTab" component={ProfileScreen} options={{ title: 'Профиль' }} />
     </Tab.Navigator>
