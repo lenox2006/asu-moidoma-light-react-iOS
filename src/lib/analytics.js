@@ -7,11 +7,16 @@ export const REPORTS = [
 ];
 
 export const PERIODS = [
-  { key: 'month', title: 'За последний месяц', sub: 'с 1-го числа по конец текущего месяца', step: 'week' },
-  { key: 'half_year', title: 'За полгода', sub: '6 месяцев, включая текущий', step: 'month' },
-  { key: 'ytd', title: 'С начала года', sub: 'с 1 января по конец текущего месяца', step: 'month' },
-  { key: 'year', title: 'За 12 месяцев', sub: '12 месяцев, включая текущий', step: 'month' },
-  { key: 'custom', title: 'Произвольный период', sub: 'выбрать даты вручную', step: 'month' },
+  { key: 'month', title: 'Месяц', sub: 'текущий месяц', step: 'week' },
+  { key: 'quarter', title: 'Квартал', sub: 'текущий квартал', step: 'month' },
+  { key: 'year', title: 'Год', sub: 'текущий год', step: 'month' },
+  { key: 'custom', title: 'Произвольный период', sub: 'выбрать даты в календаре', step: 'month' },
+];
+
+/** Группировка данных в отчётах: по регионам или по управляющим компаниям. */
+export const GROUPINGS = [
+  { key: 'region', label: 'Регионы', title: 'По регионам', one: 'регион' },
+  { key: 'uk', label: 'Управляющие компании', title: 'По управляющим компаниям', one: 'УК' },
 ];
 
 export const STEPS = [
@@ -27,6 +32,18 @@ export const METRICS = [
 ];
 
 export const periodTitle = (key) => (PERIODS.find((p) => p.key === key) || PERIODS[0]).title;
+export const grouping = (key) => GROUPINGS.find((g) => g.key === key) || GROUPINGS[0];
+
+/** Шаг графика для произвольного периода подбираем по его длине. */
+export function autoStep(from, to) {
+  const a = Date.parse(from);
+  const b = Date.parse(to);
+  if (Number.isNaN(a) || Number.isNaN(b)) return 'month';
+  const days = Math.abs(b - a) / 86400000;
+  if (days <= 62) return 'week';
+  if (days <= 550) return 'month';
+  return 'quarter';
+}
 
 const MONTHS = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 const QUARTERS = ['I кв.', 'II кв.', 'III кв.', 'IV кв.'];
@@ -55,10 +72,19 @@ export function bucketLabel(item, step) {
   return MONTHS[m - 1] + (step === 'month' && m === 1 ? ` ${String(y).slice(2)}` : '');
 }
 
-/** Короткое имя региона для подписи под столбиком графика. */
+/** Короткое имя региона или УК для подписи под столбиком графика. */
+const PREFIX = new Set(['ООО', 'ОАО', 'ЗАО', 'ПАО', 'АО', 'НАО', 'ИП', 'ТСЖ', 'ТСН', 'УК', 'УО', 'ДК',
+  'ДУК', 'МУП', 'ГУП', 'УЖК', 'УЖКХ', 'НП', 'ЖК', 'М', 'Р-Н', 'ГК']);
+
 export function shortRegion(name) {
-  const s = String(name || '').replace(/\s*(область|край|республика|автономный округ|г\.)\s*/gi, ' ').trim();
-  const w = s.split(/\s+/)[0] || String(name || '');
+  const cleaned = String(name || '')
+    .replace(/\s*(область|край|республика|автономный округ|г\.)\s*/gi, ' ')
+    .replace(/["«»().]/g, ' ')
+    .trim();
+  let words = cleaned.split(/\s+/).filter(Boolean);
+  // у названий УК отбрасываем юридическую форму и служебные сокращения, пока есть что оставить
+  while (words.length > 1 && PREFIX.has(words[0].toUpperCase())) words = words.slice(1);
+  const w = words[0] || String(name || '');
   return w.length > 9 ? `${w.slice(0, 8)}.` : w;
 }
 

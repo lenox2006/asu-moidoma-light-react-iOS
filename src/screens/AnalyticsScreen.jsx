@@ -2,11 +2,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { api } from '../api/client';
+import { Calendar, toIso } from '../components/Calendar';
 import { BalanceBar, DeltaChart, MiniBar } from '../components/charts';
-import { Button, Card, CardHead, EmptyState, ErrorCard, IconButton, Input, Loading, NavBar, ScreenBoundary, Segment, Sheet, SheetOption } from '../components/ui';
+import { Button, Card, CardHead, EmptyState, ErrorCard, IconButton, Loading, NavBar, ScreenBoundary, Segment, Sheet, SheetOption } from '../components/ui';
 import {
-  bucketLabel, flattenUks, fmtDate, fmtDelta, fmtMetric, METRICS, metricFields, netDelta,
-  PERIODS, periodLabel, REPORTS, shortRegion, STEPS, toArray,
+  autoStep, bucketLabel, fmtDate, fmtDelta, fmtMetric, grouping, GROUPINGS, METRICS, metricFields,
+  netDelta, PERIODS, periodLabel, REPORTS, shortRegion, STEPS, toArray,
 } from '../lib/analytics';
 import { orgCase } from '../lib/format';
 import { useTheme, fs } from '../theme';
@@ -27,6 +28,7 @@ export default function AnalyticsScreen() {
   const [step, setStep] = useState('week');
   const [range, setRange] = useState({ from: '', to: '' });
   const [metric, setMetric] = useState('houses');   // метрика динамики в отчёте «Тренд»
+  const [groupBy, setGroupBy] = useState('region'); // group_by=region | uk
   const [sheet, setSheet] = useState(false);
   const [draft, setDraft] = useState(null);         // настройки периода в шторке
 
@@ -45,13 +47,14 @@ export default function AnalyticsScreen() {
         if (p.period) setPeriod(p.period);
         if (p.step) setStep(p.step);
         if (p.metric) setMetric(p.metric);
+        if (p.groupBy) setGroupBy(p.groupBy);
         if (p.range) setRange(p.range);
       } catch { /* настройки повреждены — остаются значения по умолчанию */ }
     });
   }, []);
   useEffect(() => {
-    AsyncStorage.setItem(PREFS_KEY, JSON.stringify({ report, period, step, metric, range })).catch(() => {});
-  }, [report, period, step, metric, range]);
+    AsyncStorage.setItem(PREFS_KEY, JSON.stringify({ report, period, step, metric, groupBy, range })).catch(() => {});
+  }, [report, period, step, metric, groupBy, range]);
 
   const load = useCallback(async (silent) => {
     if (period === 'custom' && !(DATE_RE.test(range.from) && DATE_RE.test(range.to))) {
@@ -64,8 +67,8 @@ export default function AnalyticsScreen() {
     try {
       const res = await api.analytics({
         period,
-        step,
-        group_by: 'region',
+        step: period === 'custom' ? autoStep(range.from, range.to) : step,
+        group_by: groupBy,
         include: 'series',
         ...(period === 'custom' ? { from: range.from, to: range.to } : {}),
       });
@@ -76,7 +79,7 @@ export default function AnalyticsScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [period, step, range.from, range.to]);
+  }, [period, step, groupBy, range.from, range.to]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -85,10 +88,7 @@ export default function AnalyticsScreen() {
     [data],
   );
   const summary = data?.summary || {};
-  const uks = useMemo(
-    () => flattenUks(groups).map((u) => ({ ...u, name: orgCase(u.name) })),
-    [groups],
-  );
+  const g = grouping(groupBy);
 
   const openSheet = () => { setDraft({ period, step, range }); setSheet(true); };
   const applySheet = () => {
@@ -99,7 +99,7 @@ export default function AnalyticsScreen() {
   };
 
   const subtitle = data?.period
-    ? `${periodLabel(data.period)}${data?.scope?.regions ? ` · ${data.scope.regions} рег.` : ''}`
+    ? `${periodLabel(data.period)} · ${g.title.toLowerCase()}`
     : 'Движение жилого фонда';
 
   return (
@@ -125,18 +125,30 @@ export default function AnalyticsScreen() {
           contentContainerStyle={{ padding: 16, gap: 12, paddingBottom: 28 }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(true); }} tintColor={t.colors.accent} />}
         >
-          <ScreenBoundary key={report}>
-            {report === 'summary' ? <SummaryReport summary={summary} groups={groups} period={data?.period} /> : null}
-            {report === 'regions' ? <RegionsReport summary={summary} groups={groups} /> : null}
+          {report !== 'trend' ? (
+            <View style={{ flexDirection: 'row', backgroundColor: t.colors.line, borderRadius: t.radius.md, padding: 3 }}>
+              {GROUPINGS.map((x) => (
+                <Pressable key={x.key} onPress={() => setGroupBy(x.key)}
+                  style={{ flex: 1, height: 34, borderRadius: t.radius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: groupBy === x.key ? t.colors.surface : 'transparent' }}>
+                  <Text style={{ fontSize: fs(14), fontWeight: t.font.weightMedium, color: groupBy === x.key ? t.colors.text : t.colors.textSecondary }}>{x.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+
+          <ScreenBoundary key={`${report}:${groupBy}`}>
+            {report === 'summary' ? <SummaryReport summary={summary} groups={groups} period={data?.period} g={g} /> : null}
+            {report === 'regions' ? <RegionsReport summary={summary} groups={groups} g={g} /> : null}
             {report === 'trend' ? (
               <TrendReport
                 summary={summary}
                 groups={groups}
-                uks={uks}
                 series={toArray(data?.series)}
                 step={data?.period?.step || step}
                 metric={metric}
                 onMetric={setMetric}
+                groupBy={groupBy}
+                onGroupBy={setGroupBy}
               />
             ) : null}
           </ScreenBoundary>
@@ -156,7 +168,7 @@ export default function AnalyticsScreen() {
 
 /* ---------- Отчёт 1: «Сводка» ---------- */
 
-function SummaryReport({ summary, groups, period }) {
+function SummaryReport({ summary, groups, period, g: grp }) {
   const { theme: t } = useTheme();
   const chart = groups.map((g) => ({
     key: g.id, label: shortRegion(g.name), in: g.area_in, out: g.area_out, delta: netDelta(g, 'area'),
@@ -175,12 +187,12 @@ function SummaryReport({ summary, groups, period }) {
       </View>
 
       <Card>
-        <CardHead>Изменение площади по регионам</CardHead>
+        <CardHead>Изменение площади: {grp.title.toLowerCase()}</CardHead>
         <DeltaChart items={chart} unit="м²" />
       </Card>
 
       <Card style={{ padding: 0, gap: 0, overflow: 'hidden' }}>
-        <Text style={{ fontSize: fs(17), fontWeight: t.font.weightMedium, color: t.colors.text, padding: 16, paddingBottom: 10 }}>По регионам</Text>
+        <Text style={{ fontSize: fs(17), fontWeight: t.font.weightMedium, color: t.colors.text, padding: 16, paddingBottom: 10 }}>{grp.title}</Text>
         {sorted.map((g) => (
           <View key={g.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderTopWidth: 1, borderTopColor: t.colors.line }}>
             <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
@@ -194,7 +206,7 @@ function SummaryReport({ summary, groups, period }) {
           </View>
         ))}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, backgroundColor: t.colors.accentBg }}>
-          <Text style={{ fontSize: fs(15), fontWeight: t.font.weightMedium, color: t.colors.text }}>Итого · {groups.length} рег.</Text>
+          <Text style={{ fontSize: fs(15), fontWeight: t.font.weightMedium, color: t.colors.text }}>Итого · {groups.length} {grp.key === 'uk' ? 'УК' : 'рег.'}</Text>
           <Text style={{ fontSize: fs(15), fontWeight: t.font.weightMedium, color: tone(netDelta(summary, 'area'), t) }}>
             {fmtDelta(netDelta(summary, 'area'), 'area')} · {fmtDelta(netDelta(summary, 'houses'), 'houses')}
           </Text>
@@ -213,13 +225,13 @@ function SummaryReport({ summary, groups, period }) {
 /* ---------- Отчёт 2: «Сравнение регионов» ---------- */
 
 const FILTERS = [
-  { key: 'all', label: 'Все регионы' },
+  { key: 'all', label: 'Все' },
   { key: 'changed', label: 'С изменениями' },
   { key: 'up', label: 'Рост' },
   { key: 'down', label: 'Убыль' },
 ];
 
-function RegionsReport({ summary, groups }) {
+function RegionsReport({ summary, groups, g: grp }) {
   const { theme: t } = useTheme();
   const [filter, setFilter] = useState('all');
 
@@ -239,7 +251,7 @@ function RegionsReport({ summary, groups }) {
       <Card>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
           <Text style={{ fontSize: fs(14), color: t.colors.textSecondary }}>Всего в обслуживании</Text>
-          <Text style={{ fontSize: fs(12), color: t.colors.textSecondary }}>{groups.length} регионов</Text>
+          <Text style={{ fontSize: fs(12), color: t.colors.textSecondary }}>{groups.length} {grp.key === 'uk' ? 'УК' : 'регионов'}</Text>
         </View>
         <View style={{ flexDirection: 'row', gap: 16 }}>
           <View style={{ flex: 1 }}>
@@ -262,14 +274,14 @@ function RegionsReport({ summary, groups }) {
       </ScrollView>
 
       {list.length === 0 ? (
-        <Card><Text style={{ fontSize: fs(14), color: t.colors.textSecondary }}>За период в этих регионах движения не было.</Text></Card>
+        <Card><Text style={{ fontSize: fs(14), color: t.colors.textSecondary }}>За период движения не было.</Text></Card>
       ) : list.map((g) => (
         <Card key={g.id} style={{ gap: 10 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={{ fontSize: fs(16), fontWeight: t.font.weightMedium, color: t.colors.text }}>{g.name}</Text>
               <Text style={{ fontSize: fs(12), color: t.colors.textSecondary, marginTop: 2 }}>
-                {fmtMetric(g.area_total, 'area')} · {g.houses_total || 0} домов · {g.top_uks.length} УК
+                {fmtMetric(g.area_total, 'area')} · {g.houses_total || 0} домов{grp.key === 'region' ? ` · ${g.top_uks.length} УК` : ''}
               </Text>
             </View>
             <View style={{ backgroundColor: toneBg(netDelta(g, 'area'), t), borderRadius: 8, paddingHorizontal: 9, paddingVertical: 5 }}>
@@ -284,7 +296,7 @@ function RegionsReport({ summary, groups }) {
 
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
             <Text numberOfLines={2} style={{ flex: 1, fontSize: fs(12), color: t.colors.textSecondary }}>
-              {g.top_uks.length ? g.top_uks.slice(0, 3).map((u) => orgCase(u.name)).join(' · ') : 'УК не указаны'}
+              {grp.key === 'uk' ? 'изменение за период' : g.top_uks.length ? g.top_uks.slice(0, 3).map((u) => orgCase(u.name)).join(' · ') : 'УК не указаны'}
             </Text>
             <Text style={{ fontSize: fs(12), fontWeight: t.font.weightMedium, color: tone(netDelta(g, 'houses'), t) }}>{fmtDelta(netDelta(g, 'houses'), 'houses')}</Text>
           </View>
@@ -296,9 +308,8 @@ function RegionsReport({ summary, groups }) {
 
 /* ---------- Отчёт 3: «Тренд» ---------- */
 
-function TrendReport({ summary, groups, uks, series, step, metric, onMetric }) {
+function TrendReport({ summary, groups, series, step, metric, onMetric, groupBy, onGroupBy }) {
   const { theme: t } = useTheme();
-  const [tab, setTab] = useState('regions');
   const f = metricFields(metric);
 
   const chart = (series || []).map((s, i) => ({
@@ -310,9 +321,9 @@ function TrendReport({ summary, groups, uks, series, step, metric, onMetric }) {
     Math.max(Number(x.houses_in) || 0, Number(x.houses_out) || 0) > (Number(summary.houses_total) || 0)
   ));
 
-  const rows = tab === 'regions'
-    ? groups.map((g) => ({ key: g.id, name: g.name, sub: `${fmtMetric(g[f.total], metric)} в обслуживании`, delta: netDelta(g, metric) }))
-    : uks.map((u) => ({ key: u.key, name: u.name, sub: u.region, delta: netDelta(u, metric) }));
+  const rows = groups.map((x) => ({
+    key: x.id, name: x.name, sub: `${fmtMetric(x[f.total], metric)} в обслуживании`, delta: netDelta(x, metric),
+  }));
   const sorted = [...rows].sort((a, b) => Math.abs(b.delta || 0) - Math.abs(a.delta || 0));
 
   return (
@@ -348,8 +359,9 @@ function TrendReport({ summary, groups, uks, series, step, metric, onMetric }) {
       {/* Разрез: регионы или УК + метрика динамики */}
       <View style={{ gap: 10 }}>
         <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: t.colors.line }}>
-          <TabLabel label="Регионы" active={tab === 'regions'} onPress={() => setTab('regions')} />
-          <TabLabel label="Управляющие компании" active={tab === 'uks'} onPress={() => setTab('uks')} />
+          {GROUPINGS.map((x) => (
+            <TabLabel key={x.key} label={x.label} active={groupBy === x.key} onPress={() => onGroupBy(x.key)} />
+          ))}
         </View>
         <View style={{ flexDirection: 'row', backgroundColor: t.colors.line, borderRadius: t.radius.md, padding: 3 }}>
           {METRICS.map((m) => (
@@ -409,9 +421,20 @@ function TabLabel({ label, active, onPress }) {
 
 function PeriodSheet({ visible, draft, setDraft, onClose, onApply }) {
   const { theme: t } = useTheme();
+  const [edit, setEdit] = useState('from');   // какую дату выбираем в календаре
   if (!draft) return null;
+
   const custom = draft.period === 'custom';
-  const valid = !custom || (DATE_RE.test(draft.range.from) && DATE_RE.test(draft.range.to) && draft.range.from <= draft.range.to);
+  const { from, to } = draft.range;
+  const valid = !custom || (DATE_RE.test(from) && DATE_RE.test(to) && from <= to);
+
+  const pickDate = (iso) => {
+    const range = edit === 'from'
+      ? { from: iso, to: draft.range.to && draft.range.to >= iso ? draft.range.to : iso }
+      : { from: draft.range.from && draft.range.from <= iso ? draft.range.from : iso, to: iso };
+    setDraft({ ...draft, period: 'custom', range });
+    if (edit === 'from') setEdit('to');
+  };
 
   return (
     <Sheet
@@ -425,27 +448,66 @@ function PeriodSheet({ visible, draft, setDraft, onClose, onApply }) {
           key={p.key}
           label={p.title}
           selected={draft.period === p.key}
-          onPress={() => setDraft({ ...draft, period: p.key, step: p.step })}
+          onPress={() => setDraft({
+            ...draft,
+            period: p.key,
+            step: p.key === 'custom' ? autoStep(from, to) : p.step,
+            range: p.key === 'custom' && !(from && to) ? defaultRange() : draft.range,
+          })}
         />
       ))}
 
       {custom ? (
-        <View style={{ flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingTop: 14 }}>
-          <View style={{ flex: 1 }}>
-            <Input label="с (ГГГГ-ММ-ДД)" placeholder="2026-06-01" value={draft.range.from} onChangeText={(v) => setDraft({ ...draft, range: { ...draft.range, from: v } })} keyboardType="numbers-and-punctuation" />
+        <View style={{ paddingHorizontal: 16, paddingTop: 14, gap: 12 }}>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            {[['from', 'с'], ['to', 'по']].map(([key, label]) => (
+              <Pressable
+                key={key}
+                onPress={() => setEdit(key)}
+                style={{
+                  flex: 1, height: 52, borderRadius: t.radius.md, paddingHorizontal: 12, justifyContent: 'center',
+                  borderWidth: 1, borderColor: edit === key ? t.colors.accent : t.colors.fieldBorder,
+                  backgroundColor: edit === key ? t.colors.accentBg : t.colors.field,
+                }}
+              >
+                <Text style={{ fontSize: fs(12), color: t.colors.textSecondary }}>{label}</Text>
+                <Text style={{ fontSize: fs(15), fontWeight: t.font.weightMedium, color: t.colors.text }}>
+                  {draft.range[key] ? fmtDate(draft.range[key]) : 'выберите дату'}
+                </Text>
+              </Pressable>
+            ))}
           </View>
-          <View style={{ flex: 1 }}>
-            <Input label="по (ГГГГ-ММ-ДД)" placeholder="2026-11-30" value={draft.range.to} onChangeText={(v) => setDraft({ ...draft, range: { ...draft.range, to: v } })} keyboardType="numbers-and-punctuation" />
-          </View>
-        </View>
-      ) : null}
 
-      <Text style={{ fontSize: fs(13), color: t.colors.textSecondary, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>Шаг графика в отчёте «Тренд»</Text>
-      <View style={{ flexDirection: 'row', paddingHorizontal: 16 }}>
-        {STEPS.map((s) => <Segment key={s.key} label={s.label} active={draft.step === s.key} onPress={() => setDraft({ ...draft, step: s.key })} />)}
-      </View>
+          <Calendar
+            value={draft.range[edit]}
+            onChange={pickDate}
+            min={edit === 'to' ? draft.range.from : undefined}
+            max={edit === 'from' ? draft.range.to : undefined}
+          />
+
+          {!valid ? (
+            <Text style={{ fontSize: fs(12), color: t.colors.red }}>Дата «с» должна быть не позже даты «по»</Text>
+          ) : null}
+        </View>
+      ) : (
+        <>
+          <Text style={{ fontSize: fs(13), color: t.colors.textSecondary, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 }}>Шаг графика в отчёте «Тренд»</Text>
+          <View style={{ flexDirection: 'row', paddingHorizontal: 16 }}>
+            {STEPS.map((x) => <Segment key={x.key} label={x.label} active={draft.step === x.key} onPress={() => setDraft({ ...draft, step: x.key })} />)}
+          </View>
+        </>
+      )}
     </Sheet>
   );
+}
+
+/** По умолчанию для произвольного периода — текущий месяц. */
+function defaultRange() {
+  const now = new Date();
+  return {
+    from: toIso(new Date(now.getFullYear(), now.getMonth(), 1)),
+    to: toIso(now),
+  };
 }
 
 const tone = (v, t) => ((Number(v) || 0) > 0 ? t.colors.green : (Number(v) || 0) < 0 ? t.colors.red : t.colors.textSecondary);
