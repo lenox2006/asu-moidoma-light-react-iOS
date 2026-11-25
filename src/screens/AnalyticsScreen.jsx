@@ -130,7 +130,7 @@ export default function AnalyticsScreen() {
               {GROUPINGS.map((x) => (
                 <Pressable key={x.key} onPress={() => setGroupBy(x.key)}
                   style={{ flex: 1, height: 34, borderRadius: t.radius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: groupBy === x.key ? t.colors.surface : 'transparent' }}>
-                  <Text style={{ fontSize: fs(14), fontWeight: t.font.weightMedium, color: groupBy === x.key ? t.colors.text : t.colors.textSecondary }}>{x.label}</Text>
+                  <Text style={{ fontSize: fs(14), fontWeight: t.font.weightMedium, color: groupBy === x.key ? t.colors.text : t.colors.textSecondary }}>{x.short}</Text>
                 </Pressable>
               ))}
             </View>
@@ -371,7 +371,7 @@ function TrendReport({ summary, groups, series, step, metric, onMetric, groupBy,
               style={{ flex: 1, height: 34, borderRadius: t.radius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: metric === m.key ? t.colors.surface : 'transparent' }}
             >
               <Text style={{ fontSize: fs(14), fontWeight: t.font.weightMedium, color: metric === m.key ? t.colors.text : t.colors.textSecondary }}>
-                {m.key === 'area' ? 'Площадь, м²' : 'Количество домов'}
+                {m.label}
               </Text>
             </Pressable>
           ))}

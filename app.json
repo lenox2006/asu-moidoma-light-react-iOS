@@ -2,7 +2,7 @@
   "expo": {
     "name": "АСУ Мои Дома",
     "slug": "asu-light",
-    "version": "1.0.7",
+    "version": "1.0.8",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "asulight",

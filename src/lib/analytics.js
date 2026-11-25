@@ -15,8 +15,8 @@ export const PERIODS = [
 
 /** Группировка данных в отчётах: по регионам или по управляющим компаниям. */
 export const GROUPINGS = [
-  { key: 'region', label: 'Регионы', title: 'По регионам', one: 'регион' },
-  { key: 'uk', label: 'Управляющие компании', title: 'По управляющим компаниям', one: 'УК' },
+  { key: 'region', label: 'Регионы', short: 'Регионы', title: 'По регионам', one: 'регион' },
+  { key: 'uk', label: 'Управляющие компании', short: 'УК', title: 'По управляющим компаниям', one: 'УК' },
 ];
 
 export const STEPS = [
@@ -29,7 +29,7 @@ export const STEPS = [
 export const METRICS = [
   { key: 'houses', label: 'Дома' },
   { key: 'area', label: 'Площадь' },
-];
+];   // подписи переключателя метрики в отчёте «Тренд»
 
 export const periodTitle = (key) => (PERIODS.find((p) => p.key === key) || PERIODS[0]).title;
 export const grouping = (key) => GROUPINGS.find((g) => g.key === key) || GROUPINGS[0];
